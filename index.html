@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>noAI Detector v4.2</title>
+  <title>noAI Detector v4.3</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -172,8 +172,8 @@
 
 <div class="container">
   <header>
-    <h1>noAI Detector v4.2</h1>
-    <p class="subtitle">Sanitized Segmentation Engine with Multi-Vector Entropy Clamping</p>
+    <h1>noAI Detector v4.3</h1>
+    <p class="subtitle">Structural Boundary Normalization & Calibrated Multi-Vector Logic</p>
   </header>
 
   <div class="card">
@@ -224,35 +224,34 @@
 </div>
 
 <script>
-  function sanitizeForSegmentation(text) {
-    return text
-      // Protect decimal numbers from sentence splitting (e.g., 0.00 -> 0<DEC>00)
-      .replace(/(\d+)\.(\d+)/g, '$1<DEC>$2')
-      // Strip markdown bullets, quotes, asterisks, brackets that create ghost sentences
-      .replace(/^[\s*>-]+/gm, ' ')
-      .replace(/["'“”‘’`*_~\[\]\(\)]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
   function splitSentencesProperly(text) {
-    const clean = sanitizeForSegmentation(text);
-    let segments = [];
-    if (window.Intl && Intl.Segmenter) {
-      const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
-      segments = Array.from(segmenter.segment(clean)).map(s => s.segment.trim());
-    } else {
-      segments = clean.split(/(?<=[.?!])\s+/).map(s => s.trim());
-    }
+    // 1. Protect numbers like 0.00
+    let clean = text.replace(/(\d+)\.(\d+)/g, '$1<DEC>$2');
 
-    return segments
+    // 2. Strip bullet points and markdown stars/quotes, but keep linebreaks as explicit pauses
+    clean = clean
+      .replace(/^[\s*>-]+/gm, '')
+      .replace(/[*_~`"\[\]]/g, '');
+
+    // 3. Convert headers/colons followed by space/newlines into distinct sentence boundaries
+    clean = clean.replace(/:\s+/g, '. ');
+
+    // 4. Split on periods, exclamation/question marks, and newlines
+    const rawSegments = clean.split(/(?<=[.?!])\s+|\n+/);
+
+    return rawSegments
       .map(s => s.replace(/<DEC>/g, '.').trim())
-      // Require at least 2 alphabetic words so punctuation/quotes cannot be their own sentence
-      .filter(s => (s.match(/[a-zA-Z0-9]+/g) || []).length >= 2);
+      .filter(s => (s.match(/\b[a-zA-Z0-9']+\b/g) || []).length >= 2);
   }
 
   function calculateEntropy(str) {
-    const cleanStr = str.replace(/\p{Extended_Pictographic}/gu, '').replace(/[^a-zA-Z0-9\s]/g, '').trim().toLowerCase();
+    // Keep spaces and letters, strip emojis and markdown symbols
+    const cleanStr = str
+      .replace(/\p{Extended_Pictographic}/gu, '')
+      .replace(/[*_~`#>-]/g, '')
+      .trim()
+      .toLowerCase();
+
     const len = cleanStr.length;
     if (len === 0) return 0;
     const frequencies = {};
@@ -290,7 +289,7 @@
       warningBox.style.display = 'none';
     }
 
-    // 1. Burstiness (Variance of real sentence lengths)
+    // 1. Burstiness (StdDev)
     const meanLen = totalWords / (sentenceCount || 1);
     let burstiness = 0;
     if (sentenceCount >= 2) {
@@ -300,58 +299,60 @@
       burstiness = 5.0;
     }
 
-    // 2. Character Entropy
+    // 2. Character Entropy (Now properly bounded)
     const entropy = calculateEntropy(raw);
 
-    // 3. Formal Punctuation
+    // 3. Punctuation Rigidity
     const formalPunctuationMatches = raw.match(/[,;:\u2014\u2013\(\)]/g) || [];
     const formalPunctRatio = (formalPunctuationMatches.length / (totalWords || 1));
 
-    // 4. Emoji Discount (Strictly capped)
+    // 4. Emoji Discount
     const emojiMatches = raw.match(/\p{Extended_Pictographic}/gu) || [];
     const emojiCount = emojiMatches.length;
     let emojiDiscount = 0;
     if (emojiCount > 0) {
-      emojiDiscount = Math.min(6, Math.max(2, Math.round((emojiCount / Math.max(1, totalWords / 20)) * 3)));
+      emojiDiscount = Math.min(5, Math.max(1, Math.round((emojiCount / Math.max(1, totalWords / 20)) * 2)));
     }
 
-    // --- Calibrated Balanced Engine ---
-    let score = 35; // True neutral starting point
+    // --- Scoring Engine v4.3 ---
+    let score = 40; // Balanced ground
 
-    // Entropy: Primary signal for token distribution
-    if (entropy >= 4.25 && entropy <= 4.58) {
-      score += 26; // AI character distribution signature
-    } else if (entropy < 3.80 || entropy > 4.75) {
-      score -= 16;
+    // Entropy check: Standard LLMs hit 4.10 - 4.55 when spaces are retained
+    if (entropy >= 4.15 && entropy <= 4.55) {
+      score += 25; // Distinct token predictability pattern
+    } else if (entropy < 3.80 || entropy > 4.70) {
+      score -= 15;
     }
 
-    // Burstiness
+    // Sentence Flow Rigidity
     if (sentenceCount >= 3) {
-      if (burstiness < 3.2) score += 24;       // Monotonous robotic rhythm
-      else if (burstiness < 4.8) score += 12;
-      else if (burstiness > 12.0) score -= 18;  // Extreme organic run-on
-      else if (burstiness > 7.0) score -= 10;
+      if (burstiness < 3.8) {
+        score += 25; // Rigid rhythm
+      } else if (burstiness < 6.0) {
+        score += 10;
+      } else if (burstiness > 12.0) {
+        score -= 10; // Controlled rebate, doesn't wipe the whole score
+      }
     }
 
-    // Punctuation Rigidity
-    if (formalPunctRatio > 0.11) score += 12;
-    if (formalPunctRatio === 0 && totalWords > 18) score -= 10;
+    // Punctuation factor
+    if (formalPunctRatio > 0.08) score += 10;
 
-    // Apply bounded emoji discount
+    // Apply emoji discount
     score -= emojiDiscount;
 
-    // Sample size dampening
+    // Sample size dampener
     const sampleWeight = Math.min(1.0, totalWords / 30);
     let finalScore = Math.round(35 + (score - 35) * sampleWeight);
     finalScore = Math.max(5, Math.min(97, finalScore));
 
-    // Sentence Flow Highlights
+    // Highlight segments
     const highlightedHTML = sentenceData.map(s => {
       const diff = Math.abs(s.wordCount - meanLen);
       let hlClass = 'hl-mid';
       if (sentenceCount >= 3 && diff < 3.0 && s.wordCount >= 10 && s.wordCount <= 24) {
         hlClass = 'hl-danger';
-      } else if (diff > 7 || s.wordCount < 6 || s.wordCount > 32) {
+      } else if (diff > 7 || s.wordCount < 6 || s.wordCount > 30) {
         hlClass = 'hl-safe';
       }
       return `<span class="${hlClass}">${s.text}</span>`;
