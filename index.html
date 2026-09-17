@@ -185,6 +185,7 @@
       font-size: 0.8rem;
       color: var(--muted);
       margin-top: 0.5rem;
+      flex-wrap: wrap;
     }
 
     .legend-item {
@@ -245,9 +246,9 @@
         <strong style="font-size:0.9rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Sentence Breakdown</strong>
         <div class="highlight-block" id="highlightBlock" style="margin-top: 0.5rem;"></div>
         <div class="legend">
-          <div class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Uniform / Monotonous (Suspicious)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Uniform / Rigid</div>
           <div class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> Neutral Cadence</div>
-          <div class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> High Variation / Punchy (Human)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> Natural / Irregular</div>
         </div>
       </div>
     </div>
@@ -255,22 +256,30 @@
 </div>
 
 <script>
+  function splitSentencesProperly(text) {
+    // Native browser sentence segmentation (protects decimals like 0.00 and abbreviations)
+    if (window.Intl && Intl.Segmenter) {
+      const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
+      return Array.from(segmenter.segment(text))
+        .map(s => s.segment.trim())
+        .filter(s => s.length > 0);
+    }
+    // Fallback: negative lookbehind/lookahead for numbers to prevent cutting 0.00
+    return text.split(/(?<!\d)\.(?!\d)\s+|(?<=[?!])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+  }
+
   function runAnalysis() {
     const raw = document.getElementById('inputText').value.trim();
     if (!raw) return;
 
-    // Match sentences reliably without losing punctuation
-    const sentenceRegex = /[^.!?\n]+[.!?]+|\S[^.!?\n]+$/g;
-    const rawSentences = raw.match(sentenceRegex) || [raw];
-    const cleanSentences = rawSentences.map(s => s.trim()).filter(s => s.length > 0);
-
-    const sentenceData = cleanSentences.map(sentence => {
+    const rawSentences = splitSentencesProperly(raw);
+    const sentenceData = rawSentences.map(sentence => {
       const words = sentence.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
       return {
         text: sentence,
         wordCount: words.length
       };
-    });
+    }).filter(s => s.wordCount > 0);
 
     const totalWords = sentenceData.reduce((acc, s) => acc + s.wordCount, 0);
 
@@ -282,45 +291,57 @@
     const n = sentenceData.length;
     const meanLen = totalWords / n;
 
-    // Variance calculation across sentences
+    // Corrected Variance calculation
     let burstiness = 0;
     if (n > 1) {
       const variance = sentenceData.reduce((sum, s) => sum + Math.pow(s.wordCount - meanLen, 2), 0) / n;
       burstiness = Math.sqrt(variance);
     } else {
-      burstiness = meanLen > 25 ? 9.0 : 1.5;
+      burstiness = 1.0;
     }
 
-    // Score based on structural monotony:
-    // When sentence lengths hover closely around the mean without punchy contrasts, machine score rises
-    let aiScore = 50;
+    // Balanced heuristic scoring
+    // Rather than letting high burstiness drop the score straight to 0,
+    // we evaluate if the sentences are standard AI-cadence (12-22 words each)
+    let uniformSentences = 0;
+    sentenceData.forEach(s => {
+      if (s.wordCount >= 10 && s.wordCount <= 24) {
+        uniformSentences++;
+      }
+    });
+    const uniformityRatio = uniformSentences / n;
 
-    if (burstiness < 3.0) {
-      aiScore += 35; // Rigid length uniformity
-    } else if (burstiness < 5.5) {
+    let aiScore = 40;
+
+    // Monotony penalty
+    if (burstiness < 4.0) {
+      aiScore += 30;
+    } else if (burstiness < 7.0) {
       aiScore += 15;
-    } else if (burstiness > 10.0) {
-      aiScore -= 30; // Extreme human variability
     } else {
       aiScore -= 10;
     }
 
-    // Single run-on / autocomplete check
-    if (n === 1 && totalWords > 20) {
-      aiScore = 18; // Pure stream of consciousness
+    // High proportion of typical AI length sentences
+    if (uniformityRatio > 0.65) {
+      aiScore += 25;
+    }
+
+    // Check for single run-on without punctuation
+    if (n === 1 && totalWords > 18) {
+      aiScore = 15;
     }
 
     aiScore = Math.max(5, Math.min(98, Math.round(aiScore)));
 
-    // Highlight individual sentences based on distance from mean length
+    // Highlight sentences based on structural rigidity
     const highlightedHTML = sentenceData.map(s => {
       const diff = Math.abs(s.wordCount - meanLen);
       let hlClass = 'hl-mid';
 
-      // If a sentence sits right near the monotonous average in a uniform piece
-      if (diff < 3 && burstiness < 6) {
+      if (diff < 3.5 && s.wordCount >= 8 && s.wordCount <= 25) {
         hlClass = 'hl-danger';
-      } else if (diff > 7 || s.wordCount < 5 || s.wordCount > 35) {
+      } else if (diff > 8 || s.wordCount < 6 || s.wordCount > 35) {
         hlClass = 'hl-safe';
       }
 
