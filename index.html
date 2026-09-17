@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>noAI - Heuristic Text Analyzer</title>
+  <title>noAI Detector</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -166,7 +166,7 @@
   </header>
 
   <div class="card">
-    <textarea id="inputText" placeholder="Paste at least 2-3 paragraphs of text here to analyze statistical variance..."></textarea>
+    <textarea id="inputText" placeholder="Paste text here to analyze patterns..."></textarea>
 
     <div class="btn-row">
       <button onclick="runAnalysis()">Analyze Patterns</button>
@@ -204,30 +204,43 @@
 </div>
 
 <script>
+  const AI_BUZZWORDS = [
+    "delve", "tapestry", "testament", "furthermore", "moreover",
+    "intricate", "paramount", "in conclusion", "crucial", "landscape",
+    "leverage", "foster", "holistic", "seamless", "comprehensive"
+  ];
+
   function runAnalysis() {
     const raw = document.getElementById('inputText').value.trim();
     if (!raw) return;
 
-    // Tokenization
-    const sentences = raw.split(/(?<=[.?!])\s+/).filter(s => s.trim().length > 0);
+    // Split sentences by punctuation OR line breaks
+    const sentences = raw.split(/(?<=[.?!])\s+|\n+/).filter(s => s.trim().length > 0);
     const words = raw.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
 
-    if (words.length < 30) {
-      alert("Please provide at least 30-40 words for a statistically meaningful reading.");
+    if (words.length < 15) {
+      alert("Drop at least 15 words bro 💀");
       return;
     }
 
-    // 1. Burstiness (Standard Deviation of sentence word lengths)
+    // 1. Burstiness (StdDev of sentence word counts)
     const sentenceLengths = sentences.map(s => (s.match(/\b[a-z0-9']+\b/g) || []).length);
-    const avgLen = sentenceLengths.reduce((a, b) => a + b, 0) / (sentenceLengths.length || 1);
-    const variance = sentenceLengths.reduce((sum, len) => sum + Math.pow(len - avgLen, 2), 0) / (sentenceLengths.length || 1);
-    const burstiness = Math.sqrt(variance);
+    let burstiness = 0;
+    
+    if (sentenceLengths.length > 1) {
+      const avgLen = sentenceLengths.reduce((a, b) => a + b, 0) / sentenceLengths.length;
+      const variance = sentenceLengths.reduce((sum, len) => sum + Math.pow(len - avgLen, 2), 0) / sentenceLengths.length;
+      burstiness = Math.sqrt(variance);
+    } else {
+      // Single run-on fix: don't let 0 variance fake a machine score if it's unhinged autocomplete
+      burstiness = sentenceLengths[0] > 20 ? 8.5 : 2.0;
+    }
 
-    // 2. Lexical Diversity: Type-Token Ratio (Unique words / Total words)
+    // 2. Lexical Diversity (TTR)
     const uniqueWords = new Set(words);
     const ttr = uniqueWords.size / words.length;
 
-    // 3. Bigram predictability: Repeated adjacent word pairs
+    // 3. Bigram Repetition
     const bigrams = [];
     for (let i = 0; i < words.length - 1; i++) {
       bigrams.push(words[i] + ' ' + words[i + 1]);
@@ -235,27 +248,36 @@
     const uniqueBigrams = new Set(bigrams);
     const bigramRepetition = 1 - (uniqueBigrams.size / (bigrams.length || 1));
 
-    // Heuristic Weighting
-    // - Low burstiness (< 4.5) indicates uniform machine cadence.
-    // - Moderate-to-high bigram predictability indicates standard formulaic transitions.
+    // 4. LLM Vocabulary Footprint
+    let buzzwordHits = 0;
+    AI_BUZZWORDS.forEach(bw => {
+      if (raw.toLowerCase().includes(bw)) buzzwordHits++;
+    });
+
+    // Scoring Engine
     let aiScore = 50;
 
-    // Adjust for Burstiness
-    if (burstiness < 4) aiScore += 25;
-    else if (burstiness < 7) aiScore += 10;
-    else if (burstiness > 11) aiScore -= 25;
-    else aiScore -= 10;
+    // Burstiness factor
+    if (burstiness < 3.5) aiScore += 25;
+    else if (burstiness > 9.0) aiScore -= 15;
 
-    // Adjust for Lexical Diversity (LLMs generally balance around 0.5-0.7 TTR)
-    if (ttr > 0.72) aiScore -= 15;
-    if (ttr < 0.45) aiScore += 15;
+    // TTR factor (LLMs sit in the 0.50 - 0.72 pocket)
+    if (ttr >= 0.52 && ttr <= 0.72) aiScore += 15;
+    else if (ttr > 0.85) aiScore -= 10;
 
-    // Adjust for Bigram patterns
-    if (bigramRepetition < 0.05) aiScore += 10; // overly uniform word chains
-    if (bigramRepetition > 0.18) aiScore -= 10;
+    // Repeated phrasing penalty
+    if (bigramRepetition < 0.04) aiScore += 10;
+
+    // Buzzword penalty
+    aiScore += (buzzwordHits * 12);
+
+    // AI meta-analysis catch: catches AI explaining AI logic
+    if (raw.toLowerCase().includes("burstiness") || raw.toLowerCase().includes("standard deviation") || raw.toLowerCase().includes("variance")) {
+      aiScore += 35;
+    }
 
     // Clamp score
-    aiScore = Math.max(5, Math.min(96, Math.round(aiScore)));
+    aiScore = Math.max(5, Math.min(99, Math.round(aiScore)));
 
     // Render results
     const resultsBox = document.getElementById('resultsBox');
@@ -278,17 +300,17 @@
       meterFill.style.backgroundColor = '#ef4444';
       verdictBox.style.background = 'rgba(239, 68, 68, 0.1)';
       verdictBox.style.border = '1px solid #ef4444';
-      verdictBox.innerHTML = `<strong>Likely Machine Generated / Heavily Structured:</strong> The text exhibits low sentence variance (uniform rhythm) and high transition predictability.`;
+      verdictBox.innerHTML = `<strong>Caught in 4K 💀:</strong> High probability of AI generation. Algorithmic syntax or statistical buzzwords detected.`;
     } else if (aiScore <= 35) {
       meterFill.style.backgroundColor = '#22c55e';
       verdictBox.style.background = 'rgba(34, 197, 94, 0.1)';
       verdictBox.style.border = '1px solid #22c55e';
-      verdictBox.innerHTML = `<strong>Likely Human Written:</strong> High burstiness and uneven cadence detected. Sentences vary naturally in length and structural flow.`;
+      verdictBox.innerHTML = `<strong>Human Verified:</strong> Natural structural irregularity and erratic phrasing detected.`;
     } else {
       meterFill.style.backgroundColor = '#eab308';
       verdictBox.style.background = 'rgba(234, 179, 8, 0.1)';
       verdictBox.style.border = '1px solid #eab308';
-      verdictBox.innerHTML = `<strong>Inconclusive / Mixed Signal:</strong> Features mixed cadence patterns. Some sections appear uniform while others exhibit human variance.`;
+      verdictBox.innerHTML = `<strong>Mixed Signals:</strong> Text contains conflicting structural traits.`;
     }
   }
 </script>
