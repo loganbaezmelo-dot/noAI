@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>noAI - Heuristic Text Analyzer</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+    }
+
+    body {
+      margin: 0;
+      padding: 2rem 1rem;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.75rem;
+    }
+
+    p.subtitle {
+      margin: 0.25rem 0 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    }
+
+    textarea {
+      width: 100%;
+      height: 180px;
+      box-sizing: border-box;
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.85rem;
+      color: #fff;
+      font-size: 0.95rem;
+      resize: vertical;
+      font-family: inherit;
+      line-height: 1.5;
+    }
+
+    textarea:focus {
+      outline: 2px solid var(--accent);
+      border-color: transparent;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    button {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 0.65rem 1.25rem;
+      font-size: 0.95rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #1d4ed8;
+    }
+
+    .results {
+      display: none;
+      flex-direction: column;
+      gap: 1.25rem;
+      margin-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      padding-top: 1.5rem;
+    }
+
+    .meter-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .meter-bar {
+      height: 16px;
+      background: #0b1120;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .meter-fill {
+      height: 100%;
+      width: 0%;
+      background: #eab308;
+      transition: width 0.6s ease, background-color 0.6s ease;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .metric-card {
+      background: #0b1120;
+      padding: 0.85rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .metric-title {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .metric-val {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-top: 0.25rem;
+    }
+
+    .verdict {
+      padding: 0.85rem 1rem;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <h1>noAI Detector</h1>
+    <p class="subtitle">Statistical heuristic analysis: Burstiness, Perplexity approximation, and Lexical Diversity</p>
+  </header>
+
+  <div class="card">
+    <textarea id="inputText" placeholder="Paste at least 2-3 paragraphs of text here to analyze statistical variance..."></textarea>
+
+    <div class="btn-row">
+      <button onclick="runAnalysis()">Analyze Patterns</button>
+    </div>
+
+    <div class="results" id="resultsBox">
+      <div class="meter-container">
+        <div style="display:flex; justify-content:space-between;">
+          <strong id="probLabel">Likelihood of AI Generation</strong>
+          <strong id="probScore">0%</strong>
+        </div>
+        <div class="meter-bar">
+          <div class="meter-fill" id="meterFill"></div>
+        </div>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-title">Burstiness (Sentence StdDev)</div>
+          <div class="metric-val" id="valBurstiness">0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Lexical Diversity (TTR)</div>
+          <div class="metric-val" id="valTTR">0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Bigram Repetition Rate</div>
+          <div class="metric-val" id="valBigrams">0</div>
+        </div>
+      </div>
+
+      <div class="verdict" id="verdictBox"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function runAnalysis() {
+    const raw = document.getElementById('inputText').value.trim();
+    if (!raw) return;
+
+    // Tokenization
+    const sentences = raw.split(/(?<=[.?!])\s+/).filter(s => s.trim().length > 0);
+    const words = raw.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
+
+    if (words.length < 30) {
+      alert("Please provide at least 30-40 words for a statistically meaningful reading.");
+      return;
+    }
+
+    // 1. Burstiness (Standard Deviation of sentence word lengths)
+    const sentenceLengths = sentences.map(s => (s.match(/\b[a-z0-9']+\b/g) || []).length);
+    const avgLen = sentenceLengths.reduce((a, b) => a + b, 0) / (sentenceLengths.length || 1);
+    const variance = sentenceLengths.reduce((sum, len) => sum + Math.pow(len - avgLen, 2), 0) / (sentenceLengths.length || 1);
+    const burstiness = Math.sqrt(variance);
+
+    // 2. Lexical Diversity: Type-Token Ratio (Unique words / Total words)
+    const uniqueWords = new Set(words);
+    const ttr = uniqueWords.size / words.length;
+
+    // 3. Bigram predictability: Repeated adjacent word pairs
+    const bigrams = [];
+    for (let i = 0; i < words.length - 1; i++) {
+      bigrams.push(words[i] + ' ' + words[i + 1]);
+    }
+    const uniqueBigrams = new Set(bigrams);
+    const bigramRepetition = 1 - (uniqueBigrams.size / (bigrams.length || 1));
+
+    // Heuristic Weighting
+    // - Low burstiness (< 4.5) indicates uniform machine cadence.
+    // - Moderate-to-high bigram predictability indicates standard formulaic transitions.
+    let aiScore = 50;
+
+    // Adjust for Burstiness
+    if (burstiness < 4) aiScore += 25;
+    else if (burstiness < 7) aiScore += 10;
+    else if (burstiness > 11) aiScore -= 25;
+    else aiScore -= 10;
+
+    // Adjust for Lexical Diversity (LLMs generally balance around 0.5-0.7 TTR)
+    if (ttr > 0.72) aiScore -= 15;
+    if (ttr < 0.45) aiScore += 15;
+
+    // Adjust for Bigram patterns
+    if (bigramRepetition < 0.05) aiScore += 10; // overly uniform word chains
+    if (bigramRepetition > 0.18) aiScore -= 10;
+
+    // Clamp score
+    aiScore = Math.max(5, Math.min(96, Math.round(aiScore)));
+
+    // Render results
+    const resultsBox = document.getElementById('resultsBox');
+    const meterFill = document.getElementById('meterFill');
+    const probScore = document.getElementById('probScore');
+    const valBurstiness = document.getElementById('valBurstiness');
+    const valTTR = document.getElementById('valTTR');
+    const valBigrams = document.getElementById('valBigrams');
+    const verdictBox = document.getElementById('verdictBox');
+
+    resultsBox.style.display = 'flex';
+    probScore.textContent = aiScore + '%';
+    meterFill.style.width = aiScore + '%';
+
+    valBurstiness.textContent = burstiness.toFixed(2);
+    valTTR.textContent = (ttr * 100).toFixed(1) + '%';
+    valBigrams.textContent = (bigramRepetition * 100).toFixed(1) + '%';
+
+    if (aiScore >= 65) {
+      meterFill.style.backgroundColor = '#ef4444';
+      verdictBox.style.background = 'rgba(239, 68, 68, 0.1)';
+      verdictBox.style.border = '1px solid #ef4444';
+      verdictBox.innerHTML = `<strong>Likely Machine Generated / Heavily Structured:</strong> The text exhibits low sentence variance (uniform rhythm) and high transition predictability.`;
+    } else if (aiScore <= 35) {
+      meterFill.style.backgroundColor = '#22c55e';
+      verdictBox.style.background = 'rgba(34, 197, 94, 0.1)';
+      verdictBox.style.border = '1px solid #22c55e';
+      verdictBox.innerHTML = `<strong>Likely Human Written:</strong> High burstiness and uneven cadence detected. Sentences vary naturally in length and structural flow.`;
+    } else {
+      meterFill.style.backgroundColor = '#eab308';
+      verdictBox.style.background = 'rgba(234, 179, 8, 0.1)';
+      verdictBox.style.border = '1px solid #eab308';
+      verdictBox.innerHTML = `<strong>Inconclusive / Mixed Signal:</strong> Features mixed cadence patterns. Some sections appear uniform while others exhibit human variance.`;
+    }
+  }
+</script>
+
+</body>
+</html>
