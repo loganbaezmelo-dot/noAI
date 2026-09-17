@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>noAI Detector v3.1</title>
+  <title>noAI Detector v4</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -172,8 +172,8 @@
 
 <div class="container">
   <header>
-    <h1>noAI Detector v3.1</h1>
-    <p class="subtitle">Multi-Vector Analysis with Proportional Emoji Contribution & Entropy Locking</p>
+    <h1>noAI Detector v4</h1>
+    <p class="subtitle">Calibrated Multi-Vector Engine: 20% Baseline, Proportional Burstiness & Paired Entropy</p>
   </header>
 
   <div class="card">
@@ -283,7 +283,7 @@
       warningBox.style.display = 'none';
     }
 
-    // 1. Burstiness
+    // 1. Burstiness Calculation
     const meanLen = totalWords / (sentenceCount || 1);
     let burstiness = 0;
     if (sentenceCount > 2) {
@@ -293,53 +293,65 @@
       burstiness = 5.0;
     }
 
-    // 2. Character Entropy (computed without emojis)
+    // 2. Character Entropy
     const entropy = calculateEntropy(raw);
 
     // 3. Formal Punctuation Ratio
     const formalPunctuationMatches = raw.match(/[,;:\u2014\u2013\(\)]/g) || [];
     const formalPunctRatio = (formalPunctuationMatches.length / (totalWords || 1));
 
-    // 4. Proportional Emoji Contribution
-    // Matches emojis, calculates density per word, and caps the discount at 8%
+    // 4. Emoji Discount
     const emojiMatches = raw.match(/\p{Extended_Pictographic}/gu) || [];
     const emojiCount = emojiMatches.length;
     let emojiDiscount = 0;
-
     if (emojiCount > 0) {
-      // 1-2 emojis = 3-5% discount, 3+ emojis caps gently at 8%
       emojiDiscount = Math.min(8, Math.round((emojiCount / Math.max(1, totalWords / 15)) * 4));
-      if (emojiDiscount < 3) emojiDiscount = 3; // minimum acknowledgment if an emoji exists
+      if (emojiDiscount < 3) emojiDiscount = 3;
     }
 
-    // Scoring Engine
-    let rawScore = 50;
+    // --- Calibrated Scoring Engine ---
+    // Start with a baseline assumption of human writing (20%)
+    let score = 20;
 
-    // Entropy weighting
-    if (entropy >= 4.30 && entropy <= 4.60) {
-      rawScore += 28;
-    } else if (entropy < 3.85 || entropy > 4.75) {
-      rawScore -= 18;
-    }
-
-    // Burstiness weighting
+    // Burstiness check (scales properly now)
     if (sentenceCount >= 3) {
-      if (burstiness < 4.0) rawScore += 20;
-      else if (burstiness > 8.0) rawScore -= 10;
+      if (burstiness < 3.5) {
+        score += 35; // Severe monotonous penalty
+      } else if (burstiness < 5.5) {
+        score += 20;
+      } else if (burstiness > 12.0) {
+        score -= 20; // Extreme human run-on rebate
+      } else if (burstiness > 7.5) {
+        score -= 10;
+      }
     }
 
-    // Punctuation weighting
-    if (formalPunctRatio > 0.12) rawScore += 14;
+    // Paired Entropy: Only punish entropy if burstiness is moderate/low
+    // If someone writes a chaotic 17-burstiness run-on, don't execute them for having normal vocabulary
+    if (entropy >= 4.30 && entropy <= 4.60) {
+      if (burstiness < 7.0) {
+        score += 35; // True LLM footprint: uniform structure + perfect entropy
+      } else {
+        score += 15; // Muffled penalty because burstiness proved high human chaos
+      }
+    } else if (entropy < 3.85 || entropy > 4.75) {
+      score -= 15;
+    }
 
-    // Apply the bounded emoji discount
-    rawScore -= emojiDiscount;
+    // Formal Punctuation check
+    if (formalPunctRatio > 0.12 && burstiness < 7.0) {
+      score += 20;
+    }
 
-    // Sample size weight dampener
+    // Apply Emoji deduction
+    score -= emojiDiscount;
+
+    // Sample size dampener pulls extreme scores gently toward 35% for small text
     const sampleWeight = Math.min(1.0, totalWords / 35);
-    let finalScore = Math.round(50 + (rawScore - 50) * sampleWeight);
-    finalScore = Math.max(5, Math.min(98, finalScore));
+    let finalScore = Math.round(35 + (score - 35) * sampleWeight);
+    finalScore = Math.max(4, Math.min(98, finalScore));
 
-    // Render Highlights
+    // Highlights
     const highlightedHTML = sentenceData.map(s => {
       const diff = Math.abs(s.wordCount - meanLen);
       let hlClass = 'hl-mid';
@@ -351,7 +363,7 @@
       return `<span class="${hlClass}">${s.text}</span>`;
     }).join(' ');
 
-    // Update UI
+    // Render to DOM
     document.getElementById('resultsBox').style.display = 'flex';
     document.getElementById('probScore').textContent = finalScore + '%';
 
