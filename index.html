@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>noAI Detector v2</title>
+  <title>noAI Detector v3.1</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -172,8 +172,8 @@
 
 <div class="container">
   <header>
-    <h1>noAI Detector v2</h1>
-    <p class="subtitle">Multi-Vector Analysis: Burstiness, Lexical Entropy, Formal Punctuation & Sample Weighting</p>
+    <h1>noAI Detector v3.1</h1>
+    <p class="subtitle">Multi-Vector Analysis with Proportional Emoji Contribution & Entropy Locking</p>
   </header>
 
   <div class="card">
@@ -202,16 +202,16 @@
           <div class="metric-val" id="valBurstiness">0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-title">Lexical Diversity (TTR)</div>
-          <div class="metric-val" id="valTTR">0%</div>
-        </div>
-        <div class="metric-card">
           <div class="metric-title">Character Entropy</div>
           <div class="metric-val" id="valEntropy">0</div>
         </div>
         <div class="metric-card">
           <div class="metric-title">Formal Punctuation</div>
           <div class="metric-val" id="valPunct">0%</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Emoji Contribution</div>
+          <div class="metric-val" id="valEmojiDiscount">0%</div>
         </div>
       </div>
 
@@ -224,6 +224,13 @@
 </div>
 
 <script>
+  function sanitizeForAnalysis(text) {
+    return text
+      .replace(/^[\s*>-]+/gm, '')
+      .replace(/[*_~`]/g, '')
+      .replace(/"([^"]+)"/g, '$1');
+  }
+
   function splitSentencesProperly(text) {
     if (window.Intl && Intl.Segmenter) {
       const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
@@ -234,12 +241,12 @@
     return text.split(/(?<!\d)\.(?!\d)\s+|(?<=[?!])\s+|\n+/).map(s => s.trim()).filter(Boolean);
   }
 
-  // Shannon Entropy calculation (measures unpredictability of character choices)
   function calculateEntropy(str) {
-    const len = str.length;
+    const cleanStr = str.replace(/\p{Extended_Pictographic}/gu, '').trim().toLowerCase();
+    const len = cleanStr.length;
     if (len === 0) return 0;
     const frequencies = {};
-    for (const char of str.toLowerCase()) {
+    for (const char of cleanStr) {
       frequencies[char] = (frequencies[char] || 0) + 1;
     }
     return Object.values(frequencies).reduce((sum, count) => {
@@ -252,7 +259,9 @@
     const raw = document.getElementById('inputText').value.trim();
     if (!raw) return;
 
-    const rawSentences = splitSentencesProperly(raw);
+    const sanitized = sanitizeForAnalysis(raw);
+    const rawSentences = splitSentencesProperly(sanitized);
+
     const sentenceData = rawSentences.map(sentence => {
       const words = sentence.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
       return { text: sentence, wordCount: words.length };
@@ -262,69 +271,71 @@
     const sentenceCount = sentenceData.length;
 
     if (totalWords < 5) {
-      alert("Please enter at least 5 words.");
+      alert("Please enter at least 5 words 💀");
       return;
     }
 
     const warningBox = document.getElementById('sampleWarning');
-    if (totalWords < 30 || sentenceCount < 3) {
+    if (totalWords < 25 || sentenceCount < 2) {
       warningBox.style.display = 'block';
-      warningBox.textContent = `⚠️ Small sample size (${totalWords} words, ${sentenceCount} sentences). Statistical confidence is limited.`;
+      warningBox.textContent = `⚠️ Small sample size (${totalWords} words). Statistical confidence is limited.`;
     } else {
       warningBox.style.display = 'none';
     }
 
-    // 1. Metric: Burstiness
+    // 1. Burstiness
     const meanLen = totalWords / (sentenceCount || 1);
     let burstiness = 0;
     if (sentenceCount > 2) {
       const variance = sentenceData.reduce((sum, s) => sum + Math.pow(s.wordCount - meanLen, 2), 0) / sentenceCount;
       burstiness = Math.sqrt(variance);
     } else {
-      burstiness = 6.0; // neutral placeholder for small samples
+      burstiness = 5.0;
     }
 
-    // 2. Metric: Lexical Diversity (TTR)
-    const allWords = raw.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
-    const uniqueWords = new Set(allWords);
-    const ttr = allWords.length ? (uniqueWords.size / allWords.length) : 0;
-
-    // 3. Metric: Shannon Entropy
+    // 2. Character Entropy (computed without emojis)
     const entropy = calculateEntropy(raw);
 
-    // 4. Metric: Punctuation & Style Rigidity
+    // 3. Formal Punctuation Ratio
     const formalPunctuationMatches = raw.match(/[,;:\u2014\u2013\(\)]/g) || [];
     const formalPunctRatio = (formalPunctuationMatches.length / (totalWords || 1));
 
-    // Detect human markers (emojis, slang, excessive lowercase, repeated characters)
-    const hasEmojis = /\p{Extended_Pictographic}/u.test(raw);
-    const hasRepeatedLetters = /([a-z])\1{2,}/i.test(raw);
-    const isAllLowercase = raw === raw.toLowerCase() && raw.length > 25;
+    // 4. Proportional Emoji Contribution
+    // Matches emojis, calculates density per word, and caps the discount at 8%
+    const emojiMatches = raw.match(/\p{Extended_Pictographic}/gu) || [];
+    const emojiCount = emojiMatches.length;
+    let emojiDiscount = 0;
+
+    if (emojiCount > 0) {
+      // 1-2 emojis = 3-5% discount, 3+ emojis caps gently at 8%
+      emojiDiscount = Math.min(8, Math.round((emojiCount / Math.max(1, totalWords / 15)) * 4));
+      if (emojiDiscount < 3) emojiDiscount = 3; // minimum acknowledgment if an emoji exists
+    }
 
     // Scoring Engine
     let rawScore = 50;
 
-    // Burstiness factor (only penalizes if sample size is sufficient)
-    if (sentenceCount >= 3) {
-      if (burstiness < 3.5) rawScore += 20;
-      else if (burstiness > 8.5) rawScore -= 15;
+    // Entropy weighting
+    if (entropy >= 4.30 && entropy <= 4.60) {
+      rawScore += 28;
+    } else if (entropy < 3.85 || entropy > 4.75) {
+      rawScore -= 18;
     }
 
-    // Shannon Entropy factor (LLMs cluster tightly around 4.1 - 4.6 bits per char)
-    if (entropy >= 4.15 && entropy <= 4.55) rawScore += 15;
-    else if (entropy < 3.9 || entropy > 4.75) rawScore -= 15;
+    // Burstiness weighting
+    if (sentenceCount >= 3) {
+      if (burstiness < 4.0) rawScore += 20;
+      else if (burstiness > 8.0) rawScore -= 10;
+    }
 
-    // Punctuation & Structure factor
-    if (formalPunctRatio > 0.18) rawScore += 15;
-    if (formalPunctRatio === 0 && totalWords > 15) rawScore -= 20;
+    // Punctuation weighting
+    if (formalPunctRatio > 0.12) rawScore += 14;
 
-    // Human conversational checks
-    if (hasEmojis) rawScore -= 20;
-    if (hasRepeatedLetters) rawScore -= 15;
-    if (isAllLowercase) rawScore -= 25;
+    // Apply the bounded emoji discount
+    rawScore -= emojiDiscount;
 
-    // Sample size confidence scaling (pulls score toward neutral 50% for small inputs)
-    const sampleWeight = Math.min(1.0, totalWords / 45);
+    // Sample size weight dampener
+    const sampleWeight = Math.min(1.0, totalWords / 35);
     let finalScore = Math.round(50 + (rawScore - 50) * sampleWeight);
     finalScore = Math.max(5, Math.min(98, finalScore));
 
@@ -332,7 +343,7 @@
     const highlightedHTML = sentenceData.map(s => {
       const diff = Math.abs(s.wordCount - meanLen);
       let hlClass = 'hl-mid';
-      if (sentenceCount >= 3 && diff < 3.0 && s.wordCount >= 10 && s.wordCount <= 22) {
+      if (sentenceCount >= 3 && diff < 3.0 && s.wordCount >= 10 && s.wordCount <= 24) {
         hlClass = 'hl-danger';
       } else if (diff > 7 || s.wordCount < 6 || s.wordCount > 30) {
         hlClass = 'hl-safe';
@@ -340,17 +351,17 @@
       return `<span class="${hlClass}">${s.text}</span>`;
     }).join(' ');
 
-    // UI Updates
+    // Update UI
     document.getElementById('resultsBox').style.display = 'flex';
     document.getElementById('probScore').textContent = finalScore + '%';
-    
+
     const meterFill = document.getElementById('meterFill');
     meterFill.style.width = finalScore + '%';
 
     document.getElementById('valBurstiness').textContent = burstiness.toFixed(2);
-    document.getElementById('valTTR').textContent = (ttr * 100).toFixed(1) + '%';
     document.getElementById('valEntropy').textContent = entropy.toFixed(2);
     document.getElementById('valPunct').textContent = (formalPunctRatio * 100).toFixed(1) + '%';
+    document.getElementById('valEmojiDiscount').textContent = `-${emojiDiscount}%`;
     document.getElementById('highlightBlock').innerHTML = highlightedHTML;
 
     if (finalScore >= 65) meterFill.style.backgroundColor = '#ef4444';
