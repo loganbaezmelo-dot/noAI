@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>noAI Detector</title>
+  <title>noAI Detector v2</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -26,22 +26,14 @@
 
     .container {
       width: 100%;
-      max-width: 740px;
+      max-width: 780px;
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
     }
 
-    h1 {
-      margin: 0;
-      font-size: 1.75rem;
-    }
-
-    p.subtitle {
-      margin: 0.25rem 0 0;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
+    h1 { margin: 0; font-size: 1.75rem; }
+    p.subtitle { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.95rem; }
 
     .card {
       background: var(--card);
@@ -66,16 +58,9 @@
       line-height: 1.5;
     }
 
-    textarea:focus {
-      outline: 2px solid var(--accent);
-      border-color: transparent;
-    }
+    textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
 
-    .btn-row {
-      display: flex;
-      gap: 0.75rem;
-      margin-top: 1rem;
-    }
+    .btn-row { display: flex; gap: 0.75rem; margin-top: 1rem; }
 
     button {
       background: #2563eb;
@@ -89,9 +74,7 @@
       transition: background 0.2s;
     }
 
-    button:hover {
-      background: #1d4ed8;
-    }
+    button:hover { background: #1d4ed8; }
 
     .results {
       display: none;
@@ -102,12 +85,7 @@
       padding-top: 1.5rem;
     }
 
-    .meter-container {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-    }
-
+    .meter-container { display: flex; flex-direction: column; gap: 0.4rem; }
     .meter-bar {
       height: 16px;
       background: #0b1120;
@@ -125,7 +103,7 @@
 
     .metrics-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
       gap: 0.75rem;
     }
 
@@ -137,14 +115,14 @@
     }
 
     .metric-title {
-      font-size: 0.8rem;
+      font-size: 0.75rem;
       color: var(--muted);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
 
     .metric-val {
-      font-size: 1.25rem;
+      font-size: 1.2rem;
       font-weight: 700;
       margin-top: 0.25rem;
     }
@@ -179,25 +157,14 @@
       border-radius: 3px;
     }
 
-    .legend {
-      display: flex;
-      gap: 1rem;
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-top: 0.5rem;
-      flex-wrap: wrap;
-    }
-
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-
-    .legend-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 2px;
+    .warning-banner {
+      background: rgba(234, 179, 8, 0.12);
+      border: 1px solid #eab308;
+      color: #facc15;
+      padding: 0.65rem 0.85rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      display: none;
     }
   </style>
 </head>
@@ -205,18 +172,20 @@
 
 <div class="container">
   <header>
-    <h1>noAI Detector</h1>
-    <p class="subtitle">Structural cadence, per-sentence uniformity, and burstiness analysis</p>
+    <h1>noAI Detector v2</h1>
+    <p class="subtitle">Multi-Vector Analysis: Burstiness, Lexical Entropy, Formal Punctuation & Sample Weighting</p>
   </header>
 
   <div class="card">
-    <textarea id="inputText" placeholder="Paste text here to inspect per-sentence rhythm..."></textarea>
+    <textarea id="inputText" placeholder="Paste your text here..."></textarea>
 
     <div class="btn-row">
-      <button onclick="runAnalysis()">Analyze Sentences</button>
+      <button onclick="runAnalysis()">Analyze Patterns</button>
     </div>
 
     <div class="results" id="resultsBox">
+      <div id="sampleWarning" class="warning-banner"></div>
+
       <div class="meter-container">
         <div style="display:flex; justify-content:space-between;">
           <strong id="probLabel">Likelihood of AI Generation</strong>
@@ -229,27 +198,26 @@
 
       <div class="metrics-grid">
         <div class="metric-card">
-          <div class="metric-title">Burstiness (Length StdDev)</div>
+          <div class="metric-title">Burstiness (StdDev)</div>
           <div class="metric-val" id="valBurstiness">0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-title">Sentence Count</div>
-          <div class="metric-val" id="valSentences">0</div>
+          <div class="metric-title">Lexical Diversity (TTR)</div>
+          <div class="metric-val" id="valTTR">0%</div>
         </div>
         <div class="metric-card">
-          <div class="metric-title">Mean Sentence Length</div>
-          <div class="metric-val" id="valMeanLen">0</div>
+          <div class="metric-title">Character Entropy</div>
+          <div class="metric-val" id="valEntropy">0</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Formal Punctuation</div>
+          <div class="metric-val" id="valPunct">0%</div>
         </div>
       </div>
 
       <div>
-        <strong style="font-size:0.9rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Sentence Breakdown</strong>
+        <strong style="font-size:0.9rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Sentence Flow</strong>
         <div class="highlight-block" id="highlightBlock" style="margin-top: 0.5rem;"></div>
-        <div class="legend">
-          <div class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Uniform / Rigid</div>
-          <div class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> Neutral Cadence</div>
-          <div class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> Natural / Irregular</div>
-        </div>
       </div>
     </div>
   </div>
@@ -257,15 +225,27 @@
 
 <script>
   function splitSentencesProperly(text) {
-    // Native browser sentence segmentation (protects decimals like 0.00 and abbreviations)
     if (window.Intl && Intl.Segmenter) {
       const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
       return Array.from(segmenter.segment(text))
         .map(s => s.segment.trim())
         .filter(s => s.length > 0);
     }
-    // Fallback: negative lookbehind/lookahead for numbers to prevent cutting 0.00
     return text.split(/(?<!\d)\.(?!\d)\s+|(?<=[?!])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+  }
+
+  // Shannon Entropy calculation (measures unpredictability of character choices)
+  function calculateEntropy(str) {
+    const len = str.length;
+    if (len === 0) return 0;
+    const frequencies = {};
+    for (const char of str.toLowerCase()) {
+      frequencies[char] = (frequencies[char] || 0) + 1;
+    }
+    return Object.values(frequencies).reduce((sum, count) => {
+      const p = count / len;
+      return sum - p * Math.log2(p);
+    }, 0);
   }
 
   function runAnalysis() {
@@ -275,104 +255,107 @@
     const rawSentences = splitSentencesProperly(raw);
     const sentenceData = rawSentences.map(sentence => {
       const words = sentence.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
-      return {
-        text: sentence,
-        wordCount: words.length
-      };
+      return { text: sentence, wordCount: words.length };
     }).filter(s => s.wordCount > 0);
 
     const totalWords = sentenceData.reduce((acc, s) => acc + s.wordCount, 0);
+    const sentenceCount = sentenceData.length;
 
-    if (totalWords < 10) {
-      alert("Please enter at least 10 words 💀");
+    if (totalWords < 5) {
+      alert("Please enter at least 5 words.");
       return;
     }
 
-    const n = sentenceData.length;
-    const meanLen = totalWords / n;
+    const warningBox = document.getElementById('sampleWarning');
+    if (totalWords < 30 || sentenceCount < 3) {
+      warningBox.style.display = 'block';
+      warningBox.textContent = `⚠️ Small sample size (${totalWords} words, ${sentenceCount} sentences). Statistical confidence is limited.`;
+    } else {
+      warningBox.style.display = 'none';
+    }
 
-    // Corrected Variance calculation
+    // 1. Metric: Burstiness
+    const meanLen = totalWords / (sentenceCount || 1);
     let burstiness = 0;
-    if (n > 1) {
-      const variance = sentenceData.reduce((sum, s) => sum + Math.pow(s.wordCount - meanLen, 2), 0) / n;
+    if (sentenceCount > 2) {
+      const variance = sentenceData.reduce((sum, s) => sum + Math.pow(s.wordCount - meanLen, 2), 0) / sentenceCount;
       burstiness = Math.sqrt(variance);
     } else {
-      burstiness = 1.0;
+      burstiness = 6.0; // neutral placeholder for small samples
     }
 
-    // Balanced heuristic scoring
-    // Rather than letting high burstiness drop the score straight to 0,
-    // we evaluate if the sentences are standard AI-cadence (12-22 words each)
-    let uniformSentences = 0;
-    sentenceData.forEach(s => {
-      if (s.wordCount >= 10 && s.wordCount <= 24) {
-        uniformSentences++;
-      }
-    });
-    const uniformityRatio = uniformSentences / n;
+    // 2. Metric: Lexical Diversity (TTR)
+    const allWords = raw.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
+    const uniqueWords = new Set(allWords);
+    const ttr = allWords.length ? (uniqueWords.size / allWords.length) : 0;
 
-    let aiScore = 40;
+    // 3. Metric: Shannon Entropy
+    const entropy = calculateEntropy(raw);
 
-    // Monotony penalty
-    if (burstiness < 4.0) {
-      aiScore += 30;
-    } else if (burstiness < 7.0) {
-      aiScore += 15;
-    } else {
-      aiScore -= 10;
+    // 4. Metric: Punctuation & Style Rigidity
+    const formalPunctuationMatches = raw.match(/[,;:\u2014\u2013\(\)]/g) || [];
+    const formalPunctRatio = (formalPunctuationMatches.length / (totalWords || 1));
+
+    // Detect human markers (emojis, slang, excessive lowercase, repeated characters)
+    const hasEmojis = /\p{Extended_Pictographic}/u.test(raw);
+    const hasRepeatedLetters = /([a-z])\1{2,}/i.test(raw);
+    const isAllLowercase = raw === raw.toLowerCase() && raw.length > 25;
+
+    // Scoring Engine
+    let rawScore = 50;
+
+    // Burstiness factor (only penalizes if sample size is sufficient)
+    if (sentenceCount >= 3) {
+      if (burstiness < 3.5) rawScore += 20;
+      else if (burstiness > 8.5) rawScore -= 15;
     }
 
-    // High proportion of typical AI length sentences
-    if (uniformityRatio > 0.65) {
-      aiScore += 25;
-    }
+    // Shannon Entropy factor (LLMs cluster tightly around 4.1 - 4.6 bits per char)
+    if (entropy >= 4.15 && entropy <= 4.55) rawScore += 15;
+    else if (entropy < 3.9 || entropy > 4.75) rawScore -= 15;
 
-    // Check for single run-on without punctuation
-    if (n === 1 && totalWords > 18) {
-      aiScore = 15;
-    }
+    // Punctuation & Structure factor
+    if (formalPunctRatio > 0.18) rawScore += 15;
+    if (formalPunctRatio === 0 && totalWords > 15) rawScore -= 20;
 
-    aiScore = Math.max(5, Math.min(98, Math.round(aiScore)));
+    // Human conversational checks
+    if (hasEmojis) rawScore -= 20;
+    if (hasRepeatedLetters) rawScore -= 15;
+    if (isAllLowercase) rawScore -= 25;
 
-    // Highlight sentences based on structural rigidity
+    // Sample size confidence scaling (pulls score toward neutral 50% for small inputs)
+    const sampleWeight = Math.min(1.0, totalWords / 45);
+    let finalScore = Math.round(50 + (rawScore - 50) * sampleWeight);
+    finalScore = Math.max(5, Math.min(98, finalScore));
+
+    // Render Highlights
     const highlightedHTML = sentenceData.map(s => {
       const diff = Math.abs(s.wordCount - meanLen);
       let hlClass = 'hl-mid';
-
-      if (diff < 3.5 && s.wordCount >= 8 && s.wordCount <= 25) {
+      if (sentenceCount >= 3 && diff < 3.0 && s.wordCount >= 10 && s.wordCount <= 22) {
         hlClass = 'hl-danger';
-      } else if (diff > 8 || s.wordCount < 6 || s.wordCount > 35) {
+      } else if (diff > 7 || s.wordCount < 6 || s.wordCount > 30) {
         hlClass = 'hl-safe';
       }
-
-      return `<span class="${hlClass}" title="Words: ${s.wordCount}">${s.text}</span>`;
+      return `<span class="${hlClass}">${s.text}</span>`;
     }).join(' ');
 
-    // Update UI
-    const resultsBox = document.getElementById('resultsBox');
+    // UI Updates
+    document.getElementById('resultsBox').style.display = 'flex';
+    document.getElementById('probScore').textContent = finalScore + '%';
+    
     const meterFill = document.getElementById('meterFill');
-    const probScore = document.getElementById('probScore');
-    const valBurstiness = document.getElementById('valBurstiness');
-    const valSentences = document.getElementById('valSentences');
-    const valMeanLen = document.getElementById('valMeanLen');
-    const highlightBlock = document.getElementById('highlightBlock');
+    meterFill.style.width = finalScore + '%';
 
-    resultsBox.style.display = 'flex';
-    probScore.textContent = aiScore + '%';
-    meterFill.style.width = aiScore + '%';
+    document.getElementById('valBurstiness').textContent = burstiness.toFixed(2);
+    document.getElementById('valTTR').textContent = (ttr * 100).toFixed(1) + '%';
+    document.getElementById('valEntropy').textContent = entropy.toFixed(2);
+    document.getElementById('valPunct').textContent = (formalPunctRatio * 100).toFixed(1) + '%';
+    document.getElementById('highlightBlock').innerHTML = highlightedHTML;
 
-    valBurstiness.textContent = burstiness.toFixed(2);
-    valSentences.textContent = n;
-    valMeanLen.textContent = meanLen.toFixed(1) + ' words';
-    highlightBlock.innerHTML = highlightedHTML;
-
-    if (aiScore >= 65) {
-      meterFill.style.backgroundColor = '#ef4444';
-    } else if (aiScore <= 35) {
-      meterFill.style.backgroundColor = '#22c55e';
-    } else {
-      meterFill.style.backgroundColor = '#eab308';
-    }
+    if (finalScore >= 65) meterFill.style.backgroundColor = '#ef4444';
+    else if (finalScore <= 35) meterFill.style.backgroundColor = '#22c55e';
+    else meterFill.style.backgroundColor = '#eab308';
   }
 </script>
 
