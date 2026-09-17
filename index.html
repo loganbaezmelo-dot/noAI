@@ -26,7 +26,7 @@
 
     .container {
       width: 100%;
-      max-width: 720px;
+      max-width: 740px;
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
@@ -149,11 +149,54 @@
       margin-top: 0.25rem;
     }
 
-    .verdict {
-      padding: 0.85rem 1rem;
-      border-radius: 6px;
+    .highlight-block {
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      line-height: 1.8;
       font-size: 0.95rem;
-      line-height: 1.5;
+    }
+
+    .hl-safe {
+      background: rgba(34, 197, 94, 0.15);
+      border-bottom: 2px solid #22c55e;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    .hl-mid {
+      background: rgba(234, 179, 8, 0.15);
+      border-bottom: 2px solid #eab308;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    .hl-danger {
+      background: rgba(239, 68, 68, 0.2);
+      border-bottom: 2px solid #ef4444;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.5rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
     }
   </style>
 </head>
@@ -162,14 +205,14 @@
 <div class="container">
   <header>
     <h1>noAI Detector</h1>
-    <p class="subtitle">Statistical heuristic analysis: Burstiness, Perplexity approximation, and Lexical Diversity</p>
+    <p class="subtitle">Structural cadence, per-sentence uniformity, and burstiness analysis</p>
   </header>
 
   <div class="card">
-    <textarea id="inputText" placeholder="Paste text here to analyze patterns..."></textarea>
+    <textarea id="inputText" placeholder="Paste text here to inspect per-sentence rhythm..."></textarea>
 
     <div class="btn-row">
-      <button onclick="runAnalysis()">Analyze Patterns</button>
+      <button onclick="runAnalysis()">Analyze Sentences</button>
     </div>
 
     <div class="results" id="resultsBox">
@@ -185,132 +228,129 @@
 
       <div class="metrics-grid">
         <div class="metric-card">
-          <div class="metric-title">Burstiness (Sentence StdDev)</div>
+          <div class="metric-title">Burstiness (Length StdDev)</div>
           <div class="metric-val" id="valBurstiness">0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-title">Lexical Diversity (TTR)</div>
-          <div class="metric-val" id="valTTR">0</div>
+          <div class="metric-title">Sentence Count</div>
+          <div class="metric-val" id="valSentences">0</div>
         </div>
         <div class="metric-card">
-          <div class="metric-title">Bigram Repetition Rate</div>
-          <div class="metric-val" id="valBigrams">0</div>
+          <div class="metric-title">Mean Sentence Length</div>
+          <div class="metric-val" id="valMeanLen">0</div>
         </div>
       </div>
 
-      <div class="verdict" id="verdictBox"></div>
+      <div>
+        <strong style="font-size:0.9rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em;">Sentence Breakdown</strong>
+        <div class="highlight-block" id="highlightBlock" style="margin-top: 0.5rem;"></div>
+        <div class="legend">
+          <div class="legend-item"><span class="legend-dot" style="background:#ef4444;"></span> Uniform / Monotonous (Suspicious)</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#eab308;"></span> Neutral Cadence</div>
+          <div class="legend-item"><span class="legend-dot" style="background:#22c55e;"></span> High Variation / Punchy (Human)</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-  const AI_BUZZWORDS = [
-    "delve", "tapestry", "testament", "furthermore", "moreover",
-    "intricate", "paramount", "in conclusion", "crucial", "landscape",
-    "leverage", "foster", "holistic", "seamless", "comprehensive"
-  ];
-
   function runAnalysis() {
     const raw = document.getElementById('inputText').value.trim();
     if (!raw) return;
 
-    // Split sentences by punctuation OR line breaks
-    const sentences = raw.split(/(?<=[.?!])\s+|\n+/).filter(s => s.trim().length > 0);
-    const words = raw.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
+    // Match sentences reliably without losing punctuation
+    const sentenceRegex = /[^.!?\n]+[.!?]+|\S[^.!?\n]+$/g;
+    const rawSentences = raw.match(sentenceRegex) || [raw];
+    const cleanSentences = rawSentences.map(s => s.trim()).filter(s => s.length > 0);
 
-    if (words.length < 15) {
-      alert("Drop at least 15 words bro 💀");
+    const sentenceData = cleanSentences.map(sentence => {
+      const words = sentence.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
+      return {
+        text: sentence,
+        wordCount: words.length
+      };
+    });
+
+    const totalWords = sentenceData.reduce((acc, s) => acc + s.wordCount, 0);
+
+    if (totalWords < 10) {
+      alert("Please enter at least 10 words 💀");
       return;
     }
 
-    // 1. Burstiness (StdDev of sentence word counts)
-    const sentenceLengths = sentences.map(s => (s.match(/\b[a-z0-9']+\b/g) || []).length);
+    const n = sentenceData.length;
+    const meanLen = totalWords / n;
+
+    // Variance calculation across sentences
     let burstiness = 0;
-    
-    if (sentenceLengths.length > 1) {
-      const avgLen = sentenceLengths.reduce((a, b) => a + b, 0) / sentenceLengths.length;
-      const variance = sentenceLengths.reduce((sum, len) => sum + Math.pow(len - avgLen, 2), 0) / sentenceLengths.length;
+    if (n > 1) {
+      const variance = sentenceData.reduce((sum, s) => sum + Math.pow(s.wordCount - meanLen, 2), 0) / n;
       burstiness = Math.sqrt(variance);
     } else {
-      // Single run-on fix: don't let 0 variance fake a machine score if it's unhinged autocomplete
-      burstiness = sentenceLengths[0] > 20 ? 8.5 : 2.0;
+      burstiness = meanLen > 25 ? 9.0 : 1.5;
     }
 
-    // 2. Lexical Diversity (TTR)
-    const uniqueWords = new Set(words);
-    const ttr = uniqueWords.size / words.length;
-
-    // 3. Bigram Repetition
-    const bigrams = [];
-    for (let i = 0; i < words.length - 1; i++) {
-      bigrams.push(words[i] + ' ' + words[i + 1]);
-    }
-    const uniqueBigrams = new Set(bigrams);
-    const bigramRepetition = 1 - (uniqueBigrams.size / (bigrams.length || 1));
-
-    // 4. LLM Vocabulary Footprint
-    let buzzwordHits = 0;
-    AI_BUZZWORDS.forEach(bw => {
-      if (raw.toLowerCase().includes(bw)) buzzwordHits++;
-    });
-
-    // Scoring Engine
+    // Score based on structural monotony:
+    // When sentence lengths hover closely around the mean without punchy contrasts, machine score rises
     let aiScore = 50;
 
-    // Burstiness factor
-    if (burstiness < 3.5) aiScore += 25;
-    else if (burstiness > 9.0) aiScore -= 15;
-
-    // TTR factor (LLMs sit in the 0.50 - 0.72 pocket)
-    if (ttr >= 0.52 && ttr <= 0.72) aiScore += 15;
-    else if (ttr > 0.85) aiScore -= 10;
-
-    // Repeated phrasing penalty
-    if (bigramRepetition < 0.04) aiScore += 10;
-
-    // Buzzword penalty
-    aiScore += (buzzwordHits * 12);
-
-    // AI meta-analysis catch: catches AI explaining AI logic
-    if (raw.toLowerCase().includes("burstiness") || raw.toLowerCase().includes("standard deviation") || raw.toLowerCase().includes("variance")) {
-      aiScore += 35;
+    if (burstiness < 3.0) {
+      aiScore += 35; // Rigid length uniformity
+    } else if (burstiness < 5.5) {
+      aiScore += 15;
+    } else if (burstiness > 10.0) {
+      aiScore -= 30; // Extreme human variability
+    } else {
+      aiScore -= 10;
     }
 
-    // Clamp score
-    aiScore = Math.max(5, Math.min(99, Math.round(aiScore)));
+    // Single run-on / autocomplete check
+    if (n === 1 && totalWords > 20) {
+      aiScore = 18; // Pure stream of consciousness
+    }
 
-    // Render results
+    aiScore = Math.max(5, Math.min(98, Math.round(aiScore)));
+
+    // Highlight individual sentences based on distance from mean length
+    const highlightedHTML = sentenceData.map(s => {
+      const diff = Math.abs(s.wordCount - meanLen);
+      let hlClass = 'hl-mid';
+
+      // If a sentence sits right near the monotonous average in a uniform piece
+      if (diff < 3 && burstiness < 6) {
+        hlClass = 'hl-danger';
+      } else if (diff > 7 || s.wordCount < 5 || s.wordCount > 35) {
+        hlClass = 'hl-safe';
+      }
+
+      return `<span class="${hlClass}" title="Words: ${s.wordCount}">${s.text}</span>`;
+    }).join(' ');
+
+    // Update UI
     const resultsBox = document.getElementById('resultsBox');
     const meterFill = document.getElementById('meterFill');
     const probScore = document.getElementById('probScore');
     const valBurstiness = document.getElementById('valBurstiness');
-    const valTTR = document.getElementById('valTTR');
-    const valBigrams = document.getElementById('valBigrams');
-    const verdictBox = document.getElementById('verdictBox');
+    const valSentences = document.getElementById('valSentences');
+    const valMeanLen = document.getElementById('valMeanLen');
+    const highlightBlock = document.getElementById('highlightBlock');
 
     resultsBox.style.display = 'flex';
     probScore.textContent = aiScore + '%';
     meterFill.style.width = aiScore + '%';
 
     valBurstiness.textContent = burstiness.toFixed(2);
-    valTTR.textContent = (ttr * 100).toFixed(1) + '%';
-    valBigrams.textContent = (bigramRepetition * 100).toFixed(1) + '%';
+    valSentences.textContent = n;
+    valMeanLen.textContent = meanLen.toFixed(1) + ' words';
+    highlightBlock.innerHTML = highlightedHTML;
 
     if (aiScore >= 65) {
       meterFill.style.backgroundColor = '#ef4444';
-      verdictBox.style.background = 'rgba(239, 68, 68, 0.1)';
-      verdictBox.style.border = '1px solid #ef4444';
-      verdictBox.innerHTML = `<strong>Caught in 4K 💀:</strong> High probability of AI generation. Algorithmic syntax or statistical buzzwords detected.`;
     } else if (aiScore <= 35) {
       meterFill.style.backgroundColor = '#22c55e';
-      verdictBox.style.background = 'rgba(34, 197, 94, 0.1)';
-      verdictBox.style.border = '1px solid #22c55e';
-      verdictBox.innerHTML = `<strong>Human Verified:</strong> Natural structural irregularity and erratic phrasing detected.`;
     } else {
       meterFill.style.backgroundColor = '#eab308';
-      verdictBox.style.background = 'rgba(234, 179, 8, 0.1)';
-      verdictBox.style.border = '1px solid #eab308';
-      verdictBox.innerHTML = `<strong>Mixed Signals:</strong> Text contains conflicting structural traits.`;
     }
   }
 </script>
