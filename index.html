@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>noAI Detector v4</title>
+  <title>noAI Detector v4.2</title>
   <style>
     :root {
       --bg: #0f172a;
@@ -172,8 +172,8 @@
 
 <div class="container">
   <header>
-    <h1>noAI Detector v4</h1>
-    <p class="subtitle">Calibrated Multi-Vector Engine: 20% Baseline, Proportional Burstiness & Paired Entropy</p>
+    <h1>noAI Detector v4.2</h1>
+    <p class="subtitle">Sanitized Segmentation Engine with Multi-Vector Entropy Clamping</p>
   </header>
 
   <div class="card">
@@ -224,25 +224,35 @@
 </div>
 
 <script>
-  function sanitizeForAnalysis(text) {
+  function sanitizeForSegmentation(text) {
     return text
-      .replace(/^[\s*>-]+/gm, '')
-      .replace(/[*_~`]/g, '')
-      .replace(/"([^"]+)"/g, '$1');
+      // Protect decimal numbers from sentence splitting (e.g., 0.00 -> 0<DEC>00)
+      .replace(/(\d+)\.(\d+)/g, '$1<DEC>$2')
+      // Strip markdown bullets, quotes, asterisks, brackets that create ghost sentences
+      .replace(/^[\s*>-]+/gm, ' ')
+      .replace(/["'“”‘’`*_~\[\]\(\)]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   function splitSentencesProperly(text) {
+    const clean = sanitizeForSegmentation(text);
+    let segments = [];
     if (window.Intl && Intl.Segmenter) {
       const segmenter = new Intl.Segmenter('en', { granularity: 'sentence' });
-      return Array.from(segmenter.segment(text))
-        .map(s => s.segment.trim())
-        .filter(s => s.length > 0);
+      segments = Array.from(segmenter.segment(clean)).map(s => s.segment.trim());
+    } else {
+      segments = clean.split(/(?<=[.?!])\s+/).map(s => s.trim());
     }
-    return text.split(/(?<!\d)\.(?!\d)\s+|(?<=[?!])\s+|\n+/).map(s => s.trim()).filter(Boolean);
+
+    return segments
+      .map(s => s.replace(/<DEC>/g, '.').trim())
+      // Require at least 2 alphabetic words so punctuation/quotes cannot be their own sentence
+      .filter(s => (s.match(/[a-zA-Z0-9]+/g) || []).length >= 2);
   }
 
   function calculateEntropy(str) {
-    const cleanStr = str.replace(/\p{Extended_Pictographic}/gu, '').trim().toLowerCase();
+    const cleanStr = str.replace(/\p{Extended_Pictographic}/gu, '').replace(/[^a-zA-Z0-9\s]/g, '').trim().toLowerCase();
     const len = cleanStr.length;
     if (len === 0) return 0;
     const frequencies = {};
@@ -259,10 +269,7 @@
     const raw = document.getElementById('inputText').value.trim();
     if (!raw) return;
 
-    const sanitized = sanitizeForAnalysis(raw);
-    const rawSentences = splitSentencesProperly(sanitized);
-
-    const sentenceData = rawSentences.map(sentence => {
+    const sentenceData = splitSentencesProperly(raw).map(sentence => {
       const words = sentence.toLowerCase().match(/\b[a-z0-9']+\b/g) || [];
       return { text: sentence, wordCount: words.length };
     }).filter(s => s.wordCount > 0);
@@ -283,10 +290,10 @@
       warningBox.style.display = 'none';
     }
 
-    // 1. Burstiness Calculation
+    // 1. Burstiness (Variance of real sentence lengths)
     const meanLen = totalWords / (sentenceCount || 1);
     let burstiness = 0;
-    if (sentenceCount > 2) {
+    if (sentenceCount >= 2) {
       const variance = sentenceData.reduce((sum, s) => sum + Math.pow(s.wordCount - meanLen, 2), 0) / sentenceCount;
       burstiness = Math.sqrt(variance);
     } else {
@@ -296,74 +303,61 @@
     // 2. Character Entropy
     const entropy = calculateEntropy(raw);
 
-    // 3. Formal Punctuation Ratio
+    // 3. Formal Punctuation
     const formalPunctuationMatches = raw.match(/[,;:\u2014\u2013\(\)]/g) || [];
     const formalPunctRatio = (formalPunctuationMatches.length / (totalWords || 1));
 
-    // 4. Emoji Discount
+    // 4. Emoji Discount (Strictly capped)
     const emojiMatches = raw.match(/\p{Extended_Pictographic}/gu) || [];
     const emojiCount = emojiMatches.length;
     let emojiDiscount = 0;
     if (emojiCount > 0) {
-      emojiDiscount = Math.min(8, Math.round((emojiCount / Math.max(1, totalWords / 15)) * 4));
-      if (emojiDiscount < 3) emojiDiscount = 3;
+      emojiDiscount = Math.min(6, Math.max(2, Math.round((emojiCount / Math.max(1, totalWords / 20)) * 3)));
     }
 
-    // --- Calibrated Scoring Engine ---
-    // Start with a baseline assumption of human writing (20%)
-    let score = 20;
+    // --- Calibrated Balanced Engine ---
+    let score = 35; // True neutral starting point
 
-    // Burstiness check (scales properly now)
+    // Entropy: Primary signal for token distribution
+    if (entropy >= 4.25 && entropy <= 4.58) {
+      score += 26; // AI character distribution signature
+    } else if (entropy < 3.80 || entropy > 4.75) {
+      score -= 16;
+    }
+
+    // Burstiness
     if (sentenceCount >= 3) {
-      if (burstiness < 3.5) {
-        score += 35; // Severe monotonous penalty
-      } else if (burstiness < 5.5) {
-        score += 20;
-      } else if (burstiness > 12.0) {
-        score -= 20; // Extreme human run-on rebate
-      } else if (burstiness > 7.5) {
-        score -= 10;
-      }
+      if (burstiness < 3.2) score += 24;       // Monotonous robotic rhythm
+      else if (burstiness < 4.8) score += 12;
+      else if (burstiness > 12.0) score -= 18;  // Extreme organic run-on
+      else if (burstiness > 7.0) score -= 10;
     }
 
-    // Paired Entropy: Only punish entropy if burstiness is moderate/low
-    // If someone writes a chaotic 17-burstiness run-on, don't execute them for having normal vocabulary
-    if (entropy >= 4.30 && entropy <= 4.60) {
-      if (burstiness < 7.0) {
-        score += 35; // True LLM footprint: uniform structure + perfect entropy
-      } else {
-        score += 15; // Muffled penalty because burstiness proved high human chaos
-      }
-    } else if (entropy < 3.85 || entropy > 4.75) {
-      score -= 15;
-    }
+    // Punctuation Rigidity
+    if (formalPunctRatio > 0.11) score += 12;
+    if (formalPunctRatio === 0 && totalWords > 18) score -= 10;
 
-    // Formal Punctuation check
-    if (formalPunctRatio > 0.12 && burstiness < 7.0) {
-      score += 20;
-    }
-
-    // Apply Emoji deduction
+    // Apply bounded emoji discount
     score -= emojiDiscount;
 
-    // Sample size dampener pulls extreme scores gently toward 35% for small text
-    const sampleWeight = Math.min(1.0, totalWords / 35);
+    // Sample size dampening
+    const sampleWeight = Math.min(1.0, totalWords / 30);
     let finalScore = Math.round(35 + (score - 35) * sampleWeight);
-    finalScore = Math.max(4, Math.min(98, finalScore));
+    finalScore = Math.max(5, Math.min(97, finalScore));
 
-    // Highlights
+    // Sentence Flow Highlights
     const highlightedHTML = sentenceData.map(s => {
       const diff = Math.abs(s.wordCount - meanLen);
       let hlClass = 'hl-mid';
       if (sentenceCount >= 3 && diff < 3.0 && s.wordCount >= 10 && s.wordCount <= 24) {
         hlClass = 'hl-danger';
-      } else if (diff > 7 || s.wordCount < 6 || s.wordCount > 30) {
+      } else if (diff > 7 || s.wordCount < 6 || s.wordCount > 32) {
         hlClass = 'hl-safe';
       }
       return `<span class="${hlClass}">${s.text}</span>`;
     }).join(' ');
 
-    // Render to DOM
+    // Update UI
     document.getElementById('resultsBox').style.display = 'flex';
     document.getElementById('probScore').textContent = finalScore + '%';
 
